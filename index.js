@@ -1,30 +1,33 @@
 'use strict';
-module.exports = function (ms) {
-	ms = ms || 0;
+module.exports = generate(0);
+module.exports.reject = generate(1);
 
-	var promise = new Promise(function (resolve) {
-		setTimeout(resolve, ms);
-	});
+function generate(argIndex) {
+	return function (ms, value) {
+		ms = ms || 0;
+		var useValue = arguments.length > 1;
 
-	function thunk(result) {
-		return new Promise(function (resolve) {
-			setTimeout(function () {
-				resolve(result);
-			}, ms);
-		});
-	}
+		var promise = null;
 
-	thunk.then = promise.then.bind(promise);
-	thunk.catch = promise.catch.bind(promise);
+		function thunk(result) {
+			// attach error handler so we don't get `unhandledRejection` errors if they only use the thunk.
+			if (promise) {
+				promise.catch(function () {});
+			}
 
-	return thunk;
-};
+			return new Promise(function (resolve, reject) {
+				var complete = argIndex ? reject : resolve;
+				setTimeout(function () {
+					complete(useValue ? value : result);
+				}, ms);
+			});
+		}
 
-module.exports.reject = function (ms, value) {
-	if (arguments.length === 1) {
-		return new Promise(function (resolve, reject) {
-			setTimeout(reject.bind(null, value), ms);
-		});
-	}
-	return module.exports.reject.bind(null, ms);
-};
+		promise = thunk(value);
+
+		thunk.then = promise.then.bind(promise);
+		thunk.catch = promise.catch.bind(promise);
+
+		return thunk;
+	};
+}
